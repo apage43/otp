@@ -55,6 +55,7 @@ my $auto_alias_num = 0;
 my @bif;
 my @implementation;
 my @pbif;
+my @eterm_bif;
 
 while (@ARGV && $ARGV[0] =~ /^-(\w+)/) {
     my $opt = shift;
@@ -95,6 +96,8 @@ while (<>) {
 		    $alias,$wrapper]);
         push(@pbif, $bif =~ m/^'/ && $alias =~ m/^ebif_/);
         push(@implementation, $alias2);
+	push(@eterm_bif, "{'$mod','$name',$arity}.")
+	    if $mod =~ /^\w+$/;
     } else {
 	error("invalid line");
     }
@@ -189,6 +192,16 @@ for ($i = 0; $i < @bif; $i++) {
 print "#endif\n";
 
 #
+# Generate a list of BIFs in Erlang term format
+# (useful for test suites).
+#
+
+open_file("$include/bifs.list", "erlang");
+foreach (@eterm_bif) {
+    print "$_\n";
+}
+
+#
 # Generate the bif table file.
 #
 
@@ -278,11 +291,12 @@ for ($i = 0; $i < @bif; $i++) {
 }
 
 sub open_file {			# or die
-    my($name) = @_;
+    my($name,$comment) = @_;
 
+    $comment = 'C' unless $comment;
     open(FILE, ">$name") or die "$0: Failed to create $name: $!\n";
     select(FILE);
-    comment('C');
+    comment($comment);
 }
 
 sub includes {
