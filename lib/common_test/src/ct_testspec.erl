@@ -17,7 +17,7 @@
 %% %CopyrightEnd%
 %%
 
-%%% @doc Common Test Framework functions handlig test specifikations.
+%%% @doc Common Test Framework functions handling test specifications.
 %%%
 %%% <p>This module exports functions that are used within CT to
 %%% scan and parse test specifikations.</p>
@@ -270,33 +270,8 @@ collect_tests(Terms,TestSpec,Relaxed) ->
     put(relaxed,Relaxed),
     TestSpec1 = get_global(Terms,TestSpec),
     TestSpec2 = get_all_nodes(Terms,TestSpec1),
-    case catch evaluate(Terms,TestSpec2) of
-	{error,{Node,{M,F,A},Reason}} ->
-	    io:format("Error! Common Test failed to evaluate ~w:~w/~w on ~w. "
-		      "Reason: ~p~n~n", [M,F,A,Node,Reason]);
-	_ -> ok
-    end,
-    add_tests(Terms,TestSpec2).
-    
-evaluate([{eval,NodeRef,{M,F,Args}}|Ts],Spec) ->
-    Node = ref2node(NodeRef,Spec#testspec.nodes),
-    case rpc:call(Node,M,F,Args) of
-	{badrpc,Reason} ->
-	    throw({error,{Node,{M,F,length(Args)},Reason}});
-	_ ->
-	    ok
-    end,
-    evaluate(Ts,Spec);
-evaluate([{eval,{M,F,Args}}|Ts],Spec) ->
-    case catch apply(M,F,Args) of
-	{'EXIT',Reason} ->
-	    throw({error,{node(),{M,F,length(Args)},Reason}});
-	_ ->
-	    ok
-    end,
-    evaluate(Ts,Spec);
-evaluate([],_Spec) ->
-    ok.
+    {Terms2, TestSpec3} = filter_init_terms(Terms, [], TestSpec2),
+    add_tests(Terms2,TestSpec3).
 
 get_global([{alias,Ref,Dir}|Ts],Spec=#testspec{alias=Refs}) ->
     get_global(Ts,Spec#testspec{alias=[{Ref,get_absdir(Dir,Spec)}|Refs]});
@@ -304,6 +279,26 @@ get_global([{node,Ref,Node}|Ts],Spec=#testspec{nodes=Refs}) ->
     get_global(Ts,Spec#testspec{nodes=[{Ref,Node}|lists:keydelete(Node,2,Refs)]});
 get_global([_|Ts],Spec) -> get_global(Ts,Spec);
 get_global([],Spec) -> Spec.
+
+get_absfile(Callback, FullName,#testspec{spec_dir=SpecDir}) ->
+    % we need to temporary switch to new cwd here, because
+    % otherwise config files cannot be found
+    {ok, OldWd} = file:get_cwd(),
+    ok = file:set_cwd(SpecDir),
+    R =  Callback:check_parameter(FullName),
+    ok = file:set_cwd(OldWd),
+    case R of
+	{ok, {file, FullName}}->
+	    File = filename:basename(FullName),
+	    Dir = get_absname(filename:dirname(FullName),SpecDir),
+	    filename:join(Dir,File);
+	{ok, {config, FullName}}->
+	    FullName;
+	{error, {nofile, FullName}}->
+	    FullName;
+	{error, {wrong_config, FullName}}->
+	    FullName
+    end.
 
 get_absfile(FullName,#testspec{spec_dir=SpecDir}) ->
     File = filename:basename(FullName),
@@ -352,6 +347,68 @@ get_all_nodes([_|Ts],Spec) ->
     get_all_nodes(Ts,Spec);
 get_all_nodes([],Spec) ->
     Spec.
+
+filter_init_terms([{init, InitOptions}|Ts], NewTerms, Spec)->
+    filter_init_terms([{init, list_nodes(Spec), InitOptions}|Ts], NewTerms, Spec);
+filter_init_terms([{init, NodeRef, InitOptions}|Ts], NewTerms, Spec)
+    when is_atom(NodeRef)->
+    filter_init_terms([{init, [NodeRef], InitOptions}|Ts], NewTerms, Spec);
+filter_init_terms([{init, NodeRefs, InitOption}|Ts], NewTerms, Spec) when is_tuple(InitOption) ->
+    filter_init_terms([{init, NodeRefs, [InitOption]}|Ts], NewTerms, Spec);
+filter_init_terms([{init, [NodeRef|NodeRefs], InitOptions}|Ts], NewTerms, Spec=#testspec{init=InitData})->
+    NodeStartOptions = case lists:keyfind(node_start, 1, InitOptions) of
+	{node_start, NSOptions}->
+	    case lists:keyfind(callback_module, 1, NSOptions) of
+		{callback_module, _Callback}->
+		    NSOptions;
+		false->
+		    [{callback_module, ct_slave}|NSOptions]
+	    end;
+	false->
+	    []
+    end,
+    EvalTerms = case lists:keyfind(eval, 1, InitOptions) of
+	{eval, MFA} when is_tuple(MFA)->
+	    [MFA];
+	{eval, MFAs} when is_list(MFAs)->
+	    MFAs;
+	false->
+	    []
+    end,
+    Node = ref2node(NodeRef,Spec#testspec.nodes),
+    InitData2 = add_option({node_start, NodeStartOptions}, Node, InitData, true),
+    InitData3 = add_option({eval, EvalTerms}, Node, InitData2, false),
+    filter_init_terms([{init, NodeRefs, InitOptions}|Ts], NewTerms, Spec#testspec{init=InitData3});
+filter_init_terms([{init, [], _}|Ts], NewTerms, Spec)->
+    filter_init_terms(Ts, NewTerms, Spec);
+filter_init_terms([Term|Ts], NewTerms, Spec)->
+    filter_init_terms(Ts, [Term|NewTerms], Spec);
+filter_init_terms([], NewTerms, Spec)->
+    {lists:reverse(NewTerms), Spec}.
+
+add_option([], _, List, _)->
+    List;
+add_option({Key, Value}, Node, List, WarnIfExists) when is_list(Value)->
+    OldOptions = case lists:keyfind(Node, 1, List) of
+	{Node, Options}->
+	    Options;
+	false->
+	    []
+    end,
+    NewOption = case lists:keyfind(Key, 1, OldOptions) of
+	{Key, OldOption} when WarnIfExists, OldOption/=[]->
+	    io:format("There is an option ~w=~w already defined for node ~p, skipping new ~w~n",
+		[Key, OldOption, Node, Value]),
+	    OldOption;
+	{Key, OldOption}->
+	    OldOption ++ Value;
+	false->
+	    Value
+    end,
+    lists:keystore(Node, 1, List,
+	{Node, lists:keystore(Key, 1, OldOptions, {Key, NewOption})});
+add_option({Key, Value}, Node, List, WarnIfExists)->
+    add_option({Key, [Value]}, Node, List, WarnIfExists).
 
 save_nodes(Nodes,Spec=#testspec{nodes=NodeRefs}) ->
     NodeRefs1 =
@@ -415,6 +472,36 @@ add_tests([{cover,Node,File}|Ts],Spec) ->
 add_tests([{cover,File}|Ts],Spec) ->
     add_tests([{cover,all_nodes,File}|Ts],Spec);
 
+%% --- multiply_timetraps ---
+add_tests([{multiply_timetraps,all_nodes,MT}|Ts],Spec) ->
+    Tests = lists:map(fun(N) -> {multiply_timetraps,N,MT} end, list_nodes(Spec)),
+    add_tests(Tests++Ts,Spec);
+add_tests([{multiply_timetraps,Nodes,MT}|Ts],Spec) when is_list(Nodes) ->
+    Ts1 = separate(Nodes,multiply_timetraps,[MT],Ts,Spec#testspec.nodes),
+    add_tests(Ts1,Spec);
+add_tests([{multiply_timetraps,Node,MT}|Ts],Spec) ->
+    MTs = Spec#testspec.multiply_timetraps,
+    MTs1 = [{ref2node(Node,Spec#testspec.nodes),MT} |
+	    lists:keydelete(ref2node(Node,Spec#testspec.nodes),1,MTs)],
+    add_tests(Ts,Spec#testspec{multiply_timetraps=MTs1});
+add_tests([{multiply_timetraps,MT}|Ts],Spec) ->
+    add_tests([{multiply_timetraps,all_nodes,MT}|Ts],Spec);
+
+%% --- scale_timetraps ---
+add_tests([{scale_timetraps,all_nodes,ST}|Ts],Spec) ->
+    Tests = lists:map(fun(N) -> {scale_timetraps,N,ST} end, list_nodes(Spec)),
+    add_tests(Tests++Ts,Spec);
+add_tests([{scale_timetraps,Nodes,ST}|Ts],Spec) when is_list(Nodes) ->
+    Ts1 = separate(Nodes,scale_timetraps,[ST],Ts,Spec#testspec.nodes),
+    add_tests(Ts1,Spec);
+add_tests([{scale_timetraps,Node,ST}|Ts],Spec) ->
+    STs = Spec#testspec.scale_timetraps,
+    STs1 = [{ref2node(Node,Spec#testspec.nodes),ST} |
+	    lists:keydelete(ref2node(Node,Spec#testspec.nodes),1,STs)],
+    add_tests(Ts,Spec#testspec{scale_timetraps=STs1});
+add_tests([{scale_timetraps,ST}|Ts],Spec) ->
+    add_tests([{scale_timetraps,all_nodes,ST}|Ts],Spec);
+
 %% --- config ---
 add_tests([{config,all_nodes,Files}|Ts],Spec) ->
     Tests = lists:map(fun(N) -> {config,N,Files} end, list_nodes(Spec)),
@@ -433,6 +520,27 @@ add_tests([{config,Node,F}|Ts],Spec) ->
     add_tests([{config,Node,[F]}|Ts],Spec);
 add_tests([{config,Files}|Ts],Spec) ->
     add_tests([{config,all_nodes,Files}|Ts],Spec);
+
+
+%% --- userconfig ---
+add_tests([{userconfig,all_nodes,CBF}|Ts],Spec) ->
+    Tests = lists:map(fun(N) -> {userconfig,N,CBF} end, list_nodes(Spec)),
+    add_tests(Tests++Ts,Spec);
+add_tests([{userconfig,Nodes,CBF}|Ts],Spec) when is_list(Nodes) ->
+    Ts1 = separate(Nodes,userconfig,[CBF],Ts,Spec#testspec.nodes),
+    add_tests(Ts1,Spec);
+add_tests([{userconfig,Node,[{Callback, Config}|CBF]}|Ts],Spec) ->
+    Cfgs = Spec#testspec.userconfig,
+    Node1 = ref2node(Node,Spec#testspec.nodes),
+    add_tests([{userconfig,Node,CBF}|Ts],
+	      Spec#testspec{userconfig=[{Node1,{Callback,
+				get_absfile(Callback, Config ,Spec)}}|Cfgs]});
+add_tests([{userconfig,_Node,[]}|Ts],Spec) ->
+    add_tests(Ts,Spec);
+add_tests([{userconfig,Node,CBF}|Ts],Spec) ->
+    add_tests([{userconfig,Node,[CBF]}|Ts],Spec);
+add_tests([{userconfig,CBF}|Ts],Spec) ->
+    add_tests([{userconfig,all_nodes,CBF}|Ts],Spec);
 
 %% --- event_handler ---
 add_tests([{event_handler,all_nodes,Hs}|Ts],Spec) ->
@@ -516,6 +624,25 @@ add_tests([{suites,Node,Dir,Ss}|Ts],Spec) ->
 			   Ss,Tests),
     add_tests(Ts,Spec#testspec{tests=Tests1});
 
+%% --- groups ---
+%% Later make it possible to specify group execution properties
+%% that will override thse in the suite. Also make it possible
+%% create dynamic groups in specification, i.e. to group test cases
+%% by means of groups defined only in the test specification.
+add_tests([{groups,all_nodes,Dir,Suite,Gs}|Ts],Spec) ->
+    add_tests([{groups,list_nodes(Spec),Dir,Suite,Gs}|Ts],Spec);
+add_tests([{groups,Dir,Suite,Gs}|Ts],Spec) ->
+    add_tests([{groups,all_nodes,Dir,Suite,Gs}|Ts],Spec);
+add_tests([{groups,Nodes,Dir,Suite,Gs}|Ts],Spec) when is_list(Nodes) ->
+    Ts1 = separate(Nodes,groups,[Dir,Suite,Gs],Ts,Spec#testspec.nodes),
+    add_tests(Ts1,Spec);
+add_tests([{groups,Node,Dir,Suite,Gs}|Ts],Spec) ->
+    Tests = Spec#testspec.tests,
+    Tests1 = insert_cases(ref2node(Node,Spec#testspec.nodes),
+			   ref2dir(Dir,Spec#testspec.alias),
+			   Suite,Gs,Tests),
+    add_tests(Ts,Spec#testspec{tests=Tests1});
+
 %% --- cases ---
 add_tests([{cases,all_nodes,Dir,Suite,Cs}|Ts],Spec) ->
     add_tests([{cases,list_nodes(Spec),Dir,Suite,Cs}|Ts],Spec);
@@ -544,6 +671,21 @@ add_tests([{skip_suites,Node,Dir,Ss,Cmt}|Ts],Spec) ->
     Tests1 = skip_suites(ref2node(Node,Spec#testspec.nodes),
 			 ref2dir(Dir,Spec#testspec.alias),
 			 Ss,Cmt,Tests),
+    add_tests(Ts,Spec#testspec{tests=Tests1});
+
+%% --- skip_groups ---
+add_tests([{skip_groups,all_nodes,Dir,Suite,Gs,Cmt}|Ts],Spec) ->
+    add_tests([{skip_groups,list_nodes(Spec),Dir,Suite,Gs,Cmt}|Ts],Spec);
+add_tests([{skip_groups,Dir,Suite,Gs,Cmt}|Ts],Spec) ->
+    add_tests([{skip_groups,all_nodes,Dir,Suite,Gs,Cmt}|Ts],Spec);
+add_tests([{skip_groups,Nodes,Dir,Suite,Gs,Cmt}|Ts],Spec) when is_list(Nodes) ->
+    Ts1 = separate(Nodes,skip_groups,[Dir,Suite,Gs,Cmt],Ts,Spec#testspec.nodes),
+    add_tests(Ts1,Spec);
+add_tests([{skip_groups,Node,Dir,Suite,Gs,Cmt}|Ts],Spec) ->
+    Tests = Spec#testspec.tests,
+    Tests1 = skip_cases(ref2node(Node,Spec#testspec.nodes),
+			ref2dir(Dir,Spec#testspec.alias),
+			Suite,Gs,Cmt,Tests),
     add_tests(Ts,Spec#testspec{tests=Tests1});
 
 %% --- skip_cases ---
@@ -753,6 +895,8 @@ valid_terms() ->
      {cover,3},
      {config,2},
      {config,3},
+     {userconfig, 2},
+     {userconfig, 3},
      {alias,3},
      {logdir,2},
      {logdir,3},
@@ -761,7 +905,6 @@ valid_terms() ->
      {event_handler,4},
      {include,2},
      {include,3},
-
      {suites,3},
      {suites,4},
      {cases,4},
@@ -816,7 +959,3 @@ common_letters([L|Ls],Term,Count) ->
     end;
 common_letters([],_,Count) -> 
     Count.
-
-
-    
-	

@@ -4,7 +4,7 @@
 <comref>
   <header>
     <copyright>
-      <year>2007</year><year>2009</year>
+      <year>2007</year><year>2010</year>
       <holder>Ericsson AB. All Rights Reserved.</holder>
     </copyright>
     <legalnotice>
@@ -21,52 +21,57 @@
     
     </legalnotice>
 
-    <title>The run_test shell script</title>
+    <title>The run_test program</title>
     <prepared>Peter Andersson</prepared>
     <responsible>Peter Andersson</responsible>
     <docno></docno>
     <approved></approved>
     <checked></checked>
-    <date>2007-07-04</date>
-    <rev>PA1</rev>
+    <date>2010-04-01</date>
+    <rev>PA2</rev>
     <file>run_test.xml</file>
   </header>
-  <com>run_test</com> 
-  <comsummary>Shell script used for starting
-  Common Test from the Unix command line.
+  <com>run_test</com>
+  <comsummary>Program used for starting Common Test from the
+    OS command line.
   </comsummary>
 
   <description>
-  <p>The <c>run_test</c> script is automatically generated as Common
-  Test is installed (please see the Installation chapter in the Common
-  Test User's Guide for more information). The script accepts a number 
-  of different start flags. Some flags trigger <c>run_test</c>
-  to start the Common Test application and pass on data to it. Some
-  flags start an Erlang node prepared for running Common Test in a
-  particular mode.</p>
-  <p><c>run_test</c> also accepts Erlang emulator
-  flags. These are used when <c>run_test</c> calls <c>erl</c> to
-  start the Erlang node (making it possible to e.g. add directories to
-  the code server path, change the cookie on the node, start
-  additional applications, etc).</p>
+  <p>The <c>run_test</c> program is automatically installed with Erlang/OTP
+    and Common Test (please see the Installation chapter in the Common
+    Test User's Guide for more information). The program accepts a number
+    of different start flags. Some flags trigger <c>run_test</c>
+    to start the Common Test application and pass on data to it. Some
+    flags start an Erlang node prepared for running Common Test in a
+    particular mode.</p>
+
+  <p><c>run_test</c> also accepts Erlang emulator flags. These are used
+    when <c>run_test</c> calls <c>erl</c> to start the Erlang node
+    (making it possible to e.g. add directories to the code server path,
+    change the cookie on the node, start additional applications, etc).</p>
+
   <p>If <c>run_test</c> is called without parameters, it prints all valid
-  start flags to stdout.</p>
+    start flags to stdout.</p>
   </description>
 
   <section>
     <title>Run tests from command line</title>
     <pre>
-    	run_test [-dir TestDir1 TestDir2 .. TestDirN] |	
-	[-suite Suite1 Suite2 .. SuiteN 
+	run_test [-dir TestDir1 TestDir2 .. TestDirN] |
+	[-suite Suite1 Suite2 .. SuiteN
 	 [[-group Group1 Group2 .. GroupN] [-case Case1 Case2 .. CaseN]]]
 	[-step [config | keep_inactive]]
 	[-config ConfigFile1 ConfigFile2 .. ConfigFileN]
+	[-userconfig CallbackModule1 ConfigString1 and CallbackModule2
+	 ConfigString2 and .. and CallbackModuleN ConfigStringN]
 	[-decrypt_key Key] | [-decrypt_file KeyFile]
 	[-logdir LogDir]
 	[-silent_connections [ConnType1 ConnType2 .. ConnTypeN]]
 	[-stylesheet CSSFile]
 	[-cover CoverCfgFile]
-	[-event_handler EvHandler1 EvHandler2 .. EvHandlerN]
+	[-event_handler EvHandler1 EvHandler2 .. EvHandlerN] |
+        [-event_handler_init EvHandler1 InitArg1 and
+	 EvHandler2 InitArg2 and .. EvHandlerN InitArgN]
 	[-include InclDir1 InclDir2 .. InclDirN]
 	[-no_auto_compile]
         [-repeat N [-force_stop]] |
@@ -79,13 +84,17 @@
     <pre>
 	run_test -spec TestSpec1 TestSpec2 .. TestSpecN
 	[-config ConfigFile1 ConfigFile2 .. ConfigFileN]
+	[-userconfig CallbackModule1 ConfigString1 and CallbackModule2
+         ConfigString2 and .. and CallbackModuleN ConfigStringN]
 	[-decrypt_key Key] | [-decrypt_file KeyFile]
 	[-logdir LogDir]
 	[-allow_user_terms]
 	[-silent_connections [ConnType1 ConnType2 .. ConnTypeN]]
 	[-stylesheet CSSFile]
 	[-cover CoverCfgFile]
-	[-event_handler EvHandler1 EvHandler2 .. EvHandlerN]
+	[-event_handler EvHandler1 EvHandler2 .. EvHandlerN] |
+        [-event_handler_init EvHandler1 InitArg1 and
+	 EvHandler2 InitArg2 and .. EvHandlerN InitArgN]
 	[-include InclDir1 InclDir2 .. InclDirN]
 	[-no_auto_compile]
         [-repeat N [-force_stop]] |
@@ -98,6 +107,8 @@
     <pre>
         run_test -vts [-browser Browser]
 	[-config ConfigFile1 ConfigFile2 .. ConfigFileN]
+	[-userconfig CallbackModule1 ConfigString1 and CallbackModule2
+         ConfigString2 and .. and CallbackModuleN ConfigStringN]
 	[-decrypt_key Key] | [-decrypt_file KeyFile]
         [-dir TestDir1 TestDir2 .. TestDirN] |
         [-suite Suite [[-group Group] [-case Case]]]
@@ -113,8 +124,10 @@
   <section>
     <title>Run CT in interactive mode</title>
     <pre>
-	run_test -shell 
+	run_test -shell
 	[-config ConfigFile1 ConfigFile2 ... ConfigFileN]
+	[-userconfig CallbackModule1 ConfigString1 and CallbackModule2
+         ConfigString2 and .. and CallbackModuleN ConfigStringN]
 	[-decrypt_key Key] | [-decrypt_file KeyFile]</pre>
   </section>
   <section>
@@ -129,12 +142,10 @@
   </section>
 
   <section>
-  <title>See also</title>
-  <p>Please read the <seealso marker="run_test_chapter">Running Test Suites</seealso>
-  chapter in the Common Test User's Guide for information about the meaning of the
-  different start flags.</p>
+    <title>See also</title>
+    <p>Please read the <seealso marker="run_test_chapter">Running Test Suites</seealso>
+      chapter in the Common Test User's Guide for information about the meaning of the
+      different start flags.</p>
   </section>
 
 </comref>
-
-
