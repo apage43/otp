@@ -1795,6 +1795,25 @@ os_prompt%</pre>
       </desc>
     </func>
     <func>
+      <name>erlang:make_fun(Module, Function, Arity) -> fun()</name>
+      <fsummary>Create an external fun</fsummary>
+      <type>
+        <v>Module = Function = atom()</v>
+        <v>Arity = integer()</v>
+      </type>
+      <desc>
+        <p><c>erlang:make_fun/3</c> is internally used to implement
+	  the <c>fun Module:Function/Arity</c> syntax.
+	  From R14A, variables may be used in the
+	  <c>fun Module:Function/Arity</c> syntax (not only literals),
+	  so there is no longer any reason to call this BIF directly.</p>
+	<warning><p>Calling this BIF directly from your own code is not
+	    recommended. However, tools that analyze Erlang code may want
+	    to handle calls to this BIF specially to improve the analysis.
+	  </p></warning>
+      </desc>
+    </func>
+    <func>
       <name>length(List) -> int()</name>
       <fsummary>Length of a list</fsummary>
       <type>

@@ -392,8 +392,11 @@ lexpr({'fun',_,{function,F,A}}, _Prec, _Hook) ->
     leaf(format("fun ~w/~w", [F,A]));
 lexpr({'fun',_,{function,F,A},Extra}, _Prec, _Hook) ->
     {force_nl,fun_info(Extra),leaf(format("fun ~w/~w", [F,A]))};
-lexpr({'fun',_,{function,M,F,A}}, _Prec, _Hook) ->
-    leaf(format("fun ~w:~w/~w", [M,F,A]));
+lexpr({'fun',_,{function,M,F,A}}, _Prec, Hook) ->
+    NameItem = lexpr(M, Hook),
+    CallItem = lexpr(F, Hook),
+    ArityItem = lexpr(A, Hook),
+    ["fun ",NameItem,$:,CallItem,$/,ArityItem];
 lexpr({'fun',_,{clauses,Cs}}, _Prec, Hook) ->
     {list,[{first,'fun',fun_clauses(Cs, Hook)},'end']};
 lexpr({'fun',_,{clauses,Cs},Extra}, _Prec, Hook) ->

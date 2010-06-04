@@ -2043,8 +2043,9 @@ expr({'fun',Line,Body}, Vt, St) ->
                 true -> {[],St};
                 false -> {[],call_function(Line, F, A, St)}
             end;
-	{function,_M,_F,_A} ->
-	    {[],St}
+	{function,M,F,A} ->
+	    {Bvt, St1} = expr_list([M,F,A], Vt, St),
+	    {vtupdate(Bvt, Vt), St1}
     end;
 expr({call,_Line,{atom,_Lr,is_record},[E,{atom,Ln,Name}]}, Vt, St0) ->
     {Rvt,St1} = expr(E, Vt, St0),

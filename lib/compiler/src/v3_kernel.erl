@@ -293,24 +293,22 @@ expr(#c_binary{anno=A,segments=Cv}, Sub, St0) ->
 	    Error = #c_call{module=Erl,name=Name,args=Args},
 	    expr(Error, Sub, St0)
     end;
-expr(#c_fun{anno=A,vars=Cvs,body=Cb}, Sub0, #kern{ff=OldFF,func=Func}=St0) ->
-    FA = case OldFF of
-	     undefined ->
-		 Func;
-	     _ ->
-		 case lists:keyfind(id, 1, A) of
-		     {id,{_,_,Name}} -> Name;
-		     _ ->
-			 case lists:keyfind(letrec_name, 1, A) of
-			     {letrec_name,Name} -> Name;
-			     _ -> unknown_fun
-			 end
-		 end
-	 end,
-    {Kvs,Sub1,St1} = pattern_list(Cvs, Sub0, St0#kern{ff=FA}),
-    %%ok = io:fwrite("~w: ~p~n", [?LINE,{{Cvs,Sub0,St0},{Kvs,Sub1,St1}}]),
-    {Kb,Pb,St2} = body(Cb, Sub1, St1#kern{ff=FA}),
-    {#ifun{anno=A,vars=Kvs,body=pre_seq(Pb, Kb)},[],St2#kern{ff=OldFF}};
+expr(#c_fun{anno=A,vars=Cvs,body=Cb}, Sub0, #kern{ff=undefined,func=Func}=St) ->
+    %% This an ordinary local or exported function at the top-level.
+    make_ifun(Func, A, Cvs, Cb, Sub0, St);
+expr(#c_fun{anno=A,vars=Cvs,body=Cb}, Sub0, St) ->
+    %% This is some sort of fun.
+    case lists:keyfind(id, 1, A) of
+	{id,{_,_,Name}} ->
+	    make_ifun(Name, A, Cvs, Cb, Sub0, St);
+	_ ->
+	    case lists:keyfind(letrec_name, 1, A) of
+		{letrec_name,Name} ->
+		    make_ifun(Name, A, Cvs, Cb, Sub0, St);
+		_ ->
+		    make_ifun(unknown_fun, A, Cvs, Cb, Sub0, St)
+	    end
+    end;
 expr(#c_seq{arg=Ca,body=Cb}, Sub, St0) ->
     {Ka,Pa,St1} = body(Ca, Sub, St0),
     {Kb,Pb,St2} = body(Cb, Sub, St1),
@@ -448,6 +446,12 @@ expr(#c_catch{anno=A,body=Cb}, Sub, St0) ->
     {#k_catch{anno=A,body=pre_seq(Pb, Kb)},[],St1};
 %% Handle internal expressions.
 expr(#ireceive_accept{anno=A}, _Sub, St) -> {#k_receive_accept{anno=A},[],St}.
+
+make_ifun(FA, A, Cvs, Cb, Sub0, #kern{ff=OldFF}=St0) ->
+    {Kvs,Sub1,St1} = pattern_list(Cvs, Sub0, St0#kern{ff=FA}),
+    %%ok = io:fwrite("~w: ~p~n", [?LINE,{{Cvs,Sub0,St0},{Kvs,Sub1,St1}}]),
+    {Kb,Pb,St2} = body(Cb, Sub1, St1#kern{ff=FA}),
+    {#ifun{anno=A,vars=Kvs,body=pre_seq(Pb, Kb)},[],St2#kern{ff=OldFF}}.
 
 %% Translate a function_clause exception to a case_clause exception if
 %% it has been moved into another function. (A function_clause exception
