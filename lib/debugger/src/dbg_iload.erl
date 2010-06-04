@@ -32,11 +32,14 @@
 %%   Db = ETS identifier
 %% Load a new module into the database.
 %%
-%% We want the loading of a module to be syncronous  so no other
+%% We want the loading of a module to be synchronous so that no other
 %% process tries to interpret code in a module not being completely
 %% loaded. This is achieved as this function is called from
 %% dbg_iserver. We are suspended until the module has been loaded.
 %%--------------------------------------------------------------------
+-spec load_mod(Mod, file:filename(), binary(), ets:tid()) ->
+        {'ok', Mod} when is_subtype(Mod, atom()).
+
 load_mod(Mod, File, Binary, Db) ->
     Flag = process_flag(trap_exit, true),
     Pid = spawn_link(fun () -> load_mod1(Mod, File, Binary, Db) end),
@@ -46,7 +49,7 @@ load_mod(Mod, File, Binary, Db) ->
 	    What
     end.
 
--spec load_mod1(module(), file:filename(), binary(), tid()) -> no_return().
+-spec load_mod1(atom(), file:filename(), binary(), ets:tid()) -> no_return().
 
 load_mod1(Mod, File, Binary, Db) ->
     store_module(Mod, File, Binary, Db),
